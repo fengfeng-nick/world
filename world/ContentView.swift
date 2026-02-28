@@ -12,61 +12,91 @@ struct ContentView: View {
 
     @StateObject private var locationManager = LocationManager()
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var showCamera = false
+    @State private var capturedImage: UIImage?
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        Group {
-            ZStack(alignment: .bottomTrailing) {
-                if locationManager.coordinate != nil {
-                    Map(position: $cameraPosition) {
-                        UserAnnotation()
+        NavigationStack(path: $navigationPath) {
+            ZStack(alignment: .bottom) {
+                // 主内容区域
+                ZStack(alignment: .bottomTrailing) {
+                    mapContent
+                    
+                    if locationManager.coordinate != nil {
+                        Button {
+                            moveToUserLocation()
+                        } label: {
+                            Circle().fill(.ultraThinMaterial).frame(width: 50, height: 50)
+                                .overlay(
+                                    Image(systemName: "location.fill")
+                                )
+                                .shadow(radius: 6)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 120)
                     }
-                    .ignoresSafeArea(.all)
-                } else if locationManager.errorMessage != nil {
-                    Map(position: $cameraPosition)
-                        .ignoresSafeArea(.all)
-                    VStack {
-                        Text(locationManager.errorMessage ?? "")
-                            .font(.caption)
-                            .padding(8)
-                            .background(.ultraThinMaterial)
-                            .cornerRadius(8)
-                        Spacer()
-                    }
-                    .padding(.top, 50)
-                } else {
-                    VStack(spacing: 16) {
-                        ProgressView()
-                        Text("正在获取您的位置…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.fill.quaternary)
                 }
                 
-                Button {
-                    moveToUserLocation()
-                } label: {
-                    Circle().fill(.ultraThinMaterial).frame(width: 50,height: 50)
-                        .overlay(
-                            Image(systemName: "location.fill")
-                        )
-                        .shadow(radius: 6)
+                // 底部悬浮菜单栏
+                FloatingTabBar(
+                    showCamera: $showCamera,
+                    onPhotoTaken: { image in
+                        capturedImage = image
+                        // 可在此处理拍照后的逻辑，如上传、保存等
+                    },
+                    onProfileTap: {
+                        navigationPath.append(NavigationRoute.profile)
+                    }
+                )
+            }
+            .navigationDestination(for: NavigationRoute.self) { route in
+                switch route {
+                case .profile:
+                    ProfileView()
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 40)
             }
         }
         .onAppear {
             locationManager.requestLocation()
-            Task {
-                try? await Task.sleep(for: .seconds(1))
-                await MainActor.run {
-                    moveToUserLocation()
-                }
+            delayMoveToUserLocation(delay: 1)
+        }
+        .onChange(of: locationManager.authorizationStatus) {
+            if locationManager.authorizationStatus == .authorizedAlways || locationManager.authorizationStatus == .authorizedWhenInUse {
+                delayMoveToUserLocation(delay: 1)
             }
         }
-     
+    }
+    
+    @ViewBuilder
+    private var mapContent: some View {
+        if locationManager.coordinate != nil {
+            Map(position: $cameraPosition) {
+                UserAnnotation()
+            }
+            .ignoresSafeArea(.all)
+        } else if locationManager.errorMessage != nil {
+            Map(position: $cameraPosition)
+                .ignoresSafeArea(.all)
+        } else {
+            VStack(spacing: 16) {
+                ProgressView()
+                Text("正在获取您的位置…")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.fill.quaternary)
+        }
+    }
+    
+    private func delayMoveToUserLocation(delay: Int) {
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            await MainActor.run {
+                moveToUserLocation()
+            }
+        }
     }
 
     private func moveToUserLocation() {
@@ -84,6 +114,12 @@ struct ContentView: View {
             ))
         }
     }
+}
+
+// MARK: - 导航路由
+
+private enum NavigationRoute: Hashable {
+    case profile
 }
 
 #Preview {
