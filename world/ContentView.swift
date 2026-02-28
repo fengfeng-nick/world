@@ -12,8 +12,6 @@ struct ContentView: View {
 
     @StateObject private var locationManager = LocationManager()
     @State private var cameraPosition: MapCameraPosition = .automatic
-    @State private var showCamera = false
-    @State private var capturedImage: UIImage?
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
@@ -40,10 +38,8 @@ struct ContentView: View {
                 
                 // 底部悬浮菜单栏
                 FloatingTabBar(
-                    showCamera: $showCamera,
-                    onPhotoTaken: { image in
-                        capturedImage = image
-                        // 可在此处理拍照后的逻辑，如上传、保存等
+                    onAddTap: {
+                        navigationPath.append(NavigationRoute.addPost)
                     },
                     onProfileTap: {
                         navigationPath.append(NavigationRoute.profile)
@@ -54,6 +50,8 @@ struct ContentView: View {
                 switch route {
                 case .profile:
                     ProfileView()
+                case .addPost:
+                    AddPostView(locationManager: locationManager)
                 }
             }
         }
@@ -120,6 +118,7 @@ struct ContentView: View {
 
 private enum NavigationRoute: Hashable {
     case profile
+    case addPost
 }
 
 #Preview {

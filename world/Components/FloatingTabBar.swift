@@ -7,14 +7,11 @@
 
 import SwiftUI
 
-/// 底部悬浮菜单栏，包含首页、拍照、个人中心导航
+/// 底部悬浮菜单栏，包含首页、新建、个人中心导航
 struct FloatingTabBar: View {
-    /// 是否显示相机
-    @Binding var showCamera: Bool
-    
-    /// 拍照完成回调，返回拍摄的图片
-    var onPhotoTaken: ((UIImage) -> Void)?
-    
+    /// 点击 ➕ 新建时的回调（跳转到新建页面）
+    var onAddTap: (() -> Void)?
+
     /// 点击个人中心时的回调（用于跳转到独立页面）
     var onProfileTap: (() -> Void)?
     
@@ -31,9 +28,9 @@ struct FloatingTabBar: View {
             
             Spacer()
             
-            // 中间拍照按钮
+            // 中间新建按钮
             CameraButton {
-                showCamera = true
+                onAddTap?()
             }
             
             Spacer()
@@ -53,14 +50,6 @@ struct FloatingTabBar: View {
         .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         .padding(.horizontal, 24)
         .padding(.bottom, 20)
-        .sheet(isPresented: $showCamera) {
-            CameraImagePicker(onImagePicked: { image in
-                onPhotoTaken?(image)
-                showCamera = false
-            }, onCancel: {
-                showCamera = false
-            })
-        }
     }
 }
 
@@ -121,7 +110,7 @@ private struct CameraButton: View {
             .ignoresSafeArea()
         
         FloatingTabBar(
-            showCamera: .constant(false),
+            onAddTap: {},
             onProfileTap: {}
         )
     }
