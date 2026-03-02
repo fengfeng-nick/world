@@ -34,36 +34,6 @@
             endingLineNumber = "11"
             landmarkName = "ContentView"
             landmarkType = "14">
-            <Locations>
-               <Location
-                  uuid = "FA411C9E-081E-4835-A962-50F0DDFEEDD6 - 5795c29d220f2e2c"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "world.ContentView.init() -&gt; world.ContentView"
-                  moduleName = "world.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/nick/Desktop/project/world/world/ContentView.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "11"
-                  endingLineNumber = "11">
-               </Location>
-               <Location
-                  uuid = "FA411C9E-081E-4835-A962-50F0DDFEEDD6 - 43b5500df8c7eaaa"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "world.ContentView.init(postStorage: SwiftUI.EnvironmentObject&lt;world.PostStorageService&gt;) -&gt; world.ContentView"
-                  moduleName = "world.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/nick/Desktop/project/world/world/ContentView.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "15"
-                  endingLineNumber = "15">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy

@@ -52,24 +52,29 @@ struct AddPostView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // 图片区域
-                    imageSection
-
-                    // 文本输入（加 id 便于键盘弹出时滚动到此）
+                VStack(alignment: .leading, spacing: 32) {
+                    // 文本输入
                     textInputSection
                         .id("contentInput")
 
-                    // 定位区域（放在内容后面，无背景）
+                    // 图片区域
+                    if !capturedImages.isEmpty {
+                        imageSection
+                    } else {
+                        addPhotoButton
+                    }
+
+                    // 定位区域
                     locationSection
 
                     Spacer(minLength: 100)
                 }
-                .padding()
-                .padding(.bottom, keyboardHeight)
+                .padding(.horizontal, 24)
+                .padding(.top, 32)
+                .padding(.bottom, keyboardHeight + 20)
             }
             .scrollDismissesKeyboard(.interactively)
-            .background(.fill.quaternary)
+            .background(Color(uiColor: .systemBackground))
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
                 guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
                 withAnimation(.easeOut(duration: 0.25)) {
@@ -91,15 +96,17 @@ struct AddPostView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("保存") {
+                Button("发布") {
                     savePost()
                 }
+                .font(.system(size: 16, weight: .bold))
                 .disabled(isSaving || (textContent.isEmpty && capturedImages.isEmpty))
             }
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") {
                     dismiss()
                 }
+                .font(.system(size: 16, weight: .regular))
             }
         }
         .fullScreenCover(isPresented: $showCamera) {
@@ -145,87 +152,114 @@ struct AddPostView: View {
 
     @ViewBuilder
     private var locationSection: some View {
-        HStack(spacing: 12) {
-            Image(systemName: locationManager.coordinate != nil ? "location.fill" : "location")
-                .font(.title2)
-                .foregroundStyle(locationManager.coordinate != nil ? Color.accentColor : .secondary)
+        HStack(spacing: 10) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(locationManager.coordinate != nil ? Color.accentColor : Color.secondary)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("当前位置")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(locationDescription)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-            }
+            Text(locationDescription)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(locationManager.coordinate != nil ? Color.primary : Color.secondary)
+                .lineLimit(1)
+            
             Spacer()
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+    }
+
+    @ViewBuilder
+    private var addPhotoButton: some View {
+        Button {
+            showCamera = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "camera")
+                    .font(.system(size: 20, weight: .medium))
+                Text("添加照片")
+                    .font(.system(size: 16, weight: .medium))
+            }
+            .foregroundStyle(Color.primary)
+            .padding(.vertical, 18)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemBackground))
+            )
         }
     }
 
     @ViewBuilder
     private var imageSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("照片")
-                .font(.headline)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(Array(capturedImages.enumerated()), id: \.offset) { index, image in
-                        ZStack(alignment: .topTrailing) {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 100, height: 100)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .onTapGesture {
-                                    previewStartingIndex = index
-                                }
-                            Button {
-                                capturedImages.remove(at: index)
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(.white)
-                                    .shadow(radius: 2)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(Array(capturedImages.enumerated()), id: \.offset) { index, image in
+                    ZStack(alignment: .topTrailing) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 140, height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+                            .onTapGesture {
+                                previewStartingIndex = index
                             }
-                            .padding(6)
+                        
+                        Button {
+                            let idx = index
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                capturedImages.removeSubrange(idx..<(idx + 1))
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(8)
+                                .background(Color.black.opacity(0.6), in: Circle())
+                                .environment(\.colorScheme, .dark)
                         }
-                        .frame(width: 112, height: 112)
+                        .padding(8)
                     }
-
-                    Button {
-                        showCamera = true
-                    } label: {
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6]))
-                            .frame(width: 100, height: 100)
-                            .overlay {
-                                Image(systemName: "camera.fill")
-                                    .font(.title)
-                                    .foregroundStyle(.secondary)
-                            }
-                    }
-                    .buttonStyle(.plain)
+                    .transition(.scale(scale: 0.95).combined(with: .opacity))
                 }
-                .padding(.horizontal, 4)
-                .padding(.top, 12)
+
+                Button {
+                    showCamera = true
+                } label: {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(uiColor: .systemGray4), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                        .frame(width: 140, height: 180)
+                        .background(Color(uiColor: .systemGray6).opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay {
+                            VStack(spacing: 8) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 24, weight: .light))
+                                Text("继续添加")
+                                    .font(.system(size: 14, weight: .medium))
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                }
+                .buttonStyle(.plain)
             }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 24)
         }
+        .padding(.horizontal, -24)
     }
 
     @ViewBuilder
     private var textInputSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("内容")
-                .font(.headline)
-
-            TextField("输入一些内容…", text: $textContent, axis: .vertical)
-                .textFieldStyle(.plain)
-                .padding()
-                .frame(minHeight: 100, alignment: .topLeading)
-                .background(.background, in: RoundedRectangle(cornerRadius: 12))
-                .lineLimit(5...10)
-        }
+        TextField("此时此刻的想法...", text: $textContent, axis: .vertical)
+            .font(.system(size: 20, weight: .regular))
+            .lineSpacing(8)
+            .textFieldStyle(.plain)
+            .frame(minHeight: 140, alignment: .topLeading)
     }
 
     private func savePost() {
