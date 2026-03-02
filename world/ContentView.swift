@@ -10,6 +10,7 @@ import MapKit
 
 struct ContentView: View {
 
+    @EnvironmentObject var postStorage: PostStorageService
     @StateObject private var locationManager = LocationManager()
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var navigationPath = NavigationPath()
@@ -71,11 +72,28 @@ struct ContentView: View {
         if locationManager.coordinate != nil {
             Map(position: $cameraPosition) {
                 UserAnnotation()
+                ForEach(postStorage.posts) { post in
+                    Annotation(
+                        post.content.isEmpty ? "帖子" : String(post.content.prefix(20)),
+                        coordinate: CLLocationCoordinate2D(latitude: post.latitude, longitude: post.longitude)
+                    ) {
+                        PostThumbnailView(post: post)
+                    }
+                }
             }
             .ignoresSafeArea(.all)
         } else if locationManager.errorMessage != nil {
-            Map(position: $cameraPosition)
-                .ignoresSafeArea(.all)
+            Map(position: $cameraPosition) {
+                ForEach(postStorage.posts) { post in
+                    Annotation(
+                        post.content.isEmpty ? "帖子" : String(post.content.prefix(20)),
+                        coordinate: CLLocationCoordinate2D(latitude: post.latitude, longitude: post.longitude)
+                    ) {
+                        PostThumbnailView(post: post)
+                    }
+                }
+            }
+            .ignoresSafeArea(.all)
         } else {
             VStack(spacing: 16) {
                 ProgressView()
@@ -121,6 +139,45 @@ private enum NavigationRoute: Hashable {
     case addPost
 }
 
+// MARK: - 地图帖子缩略图（有图显示首图，无图显示钢笔图标）
+
+private struct PostThumbnailView: View {
+    let post: PostRecord
+    @State private var thumbnailImage: UIImage?
+
+    private let size: CGFloat = 44
+
+    var body: some View {
+        Group {
+            if let image = thumbnailImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.accentColor.gradient)
+                    .overlay {
+                        Image(systemName: "pencil")
+                            .font(.system(size: size * 0.45, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(.white.opacity(0.8), lineWidth: 1.5)
+        )
+        .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+        .task {
+            guard let firstId = post.imageLocalIdentifiers.first else { return }
+            thumbnailImage = await PostThumbnailLoader.loadThumbnail(localIdentifier: firstId)
+        }
+    }
+}
+
 #Preview {
     ContentView()
+        .environmentObject(PostStorageService())
 }

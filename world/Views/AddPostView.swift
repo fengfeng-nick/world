@@ -6,14 +6,15 @@
 //
 
 import SwiftUI
+import UIKit
 import Photos
 import CoreLocation
 import MapKit
 
 struct AddPostView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var postStorage: PostStorageService
     @ObservedObject var locationManager: LocationManager
-    @StateObject private var postStorage = PostStorageService()
 
     @State private var textContent = ""
     @State private var capturedImages: [UIImage] = []
@@ -23,6 +24,8 @@ struct AddPostView: View {
     @State private var showSaveAlert = false
     @State private var addressString: String?
     @State private var isGeocoding = false
+    @State private var previewStartingIndex: Int?
+    @State private var keyboardHeight: CGFloat = 0
 
     /// 用于 onChange 的 Equatable 键（CLLocationCoordinate2D 不遵循 Equatable）
     private var coordinateKey: String {
@@ -47,22 +50,43 @@ struct AddPostView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                // 图片区域
-                imageSection
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    // 图片区域
+                    imageSection
 
-                // 文本输入
-                textInputSection
+                    // 文本输入（加 id 便于键盘弹出时滚动到此）
+                    textInputSection
+                        .id("contentInput")
 
-                // 定位区域（放在内容后面，无背景）
-                locationSection
+                    // 定位区域（放在内容后面，无背景）
+                    locationSection
 
-                Spacer(minLength: 100)
+                    Spacer(minLength: 100)
+                }
+                .padding()
+                .padding(.bottom, keyboardHeight)
             }
-            .padding()
+            .scrollDismissesKeyboard(.interactively)
+            .background(.fill.quaternary)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notification in
+                guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                withAnimation(.easeOut(duration: 0.25)) {
+                    keyboardHeight = frame.height
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo("contentInput", anchor: .center)
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.25)) {
+                    keyboardHeight = 0
+                }
+            }
         }
-        .background(.fill.quaternary)
         .navigationTitle("新建")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -78,7 +102,7 @@ struct AddPostView: View {
                 }
             }
         }
-        .sheet(isPresented: $showCamera) {
+        .fullScreenCover(isPresented: $showCamera) {
             CameraImagePicker(
                 onImagePicked: { image in
                     capturedImages.append(image)
@@ -86,6 +110,24 @@ struct AddPostView: View {
                 },
                 onCancel: { showCamera = false }
             )
+            .ignoresSafeArea(.all)
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { previewStartingIndex != nil },
+            set: { if !$0 { previewStartingIndex = nil } }
+        )) {
+            if let index = previewStartingIndex, !capturedImages.isEmpty {
+                ImagePreviewView(
+                    images: capturedImages,
+                    initialIndex: min(index, capturedImages.count - 1),
+                    onDismiss: { previewStartingIndex = nil }
+                )
+            }
+        }
+        .onAppear {
+            if let coord = locationManager.coordinate, addressString == nil {
+                reverseGeocode(coord)
+            }
         }
         .onChange(of: coordinateKey) { _, _ in
             if let coord = locationManager.coordinate {
@@ -129,22 +171,26 @@ struct AddPostView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(Array(capturedImages.enumerated()), id: \.offset) { index, image in
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 100, height: 100)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(alignment: .topTrailing) {
-                                Button {
-                                    capturedImages.remove(at: index)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.white)
-                                        .shadow(radius: 2)
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 100, height: 100)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .onTapGesture {
+                                    previewStartingIndex = index
                                 }
-                                .offset(x: 6, y: -6)
+                            Button {
+                                capturedImages.remove(at: index)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.white)
+                                    .shadow(radius: 2)
                             }
+                            .padding(6)
+                        }
+                        .frame(width: 112, height: 112)
                     }
 
                     Button {
@@ -161,6 +207,8 @@ struct AddPostView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 4)
+                .padding(.top, 12)
             }
         }
     }
@@ -187,25 +235,22 @@ struct AddPostView: View {
             do {
                 let imageIdentifiers = try await saveImagesToPhotoLibrary(capturedImages)
 
-                guard let coordinate = locationManager.coordinate else {
-                    await MainActor.run {
+                await MainActor.run {
+                    guard let coordinate = locationManager.coordinate else {
                         saveError = "请允许定位权限以保存位置"
                         showSaveAlert = true
                         isSaving = false
+                        return
                     }
-                    return
-                }
 
-                let record = PostRecord(
-                    content: textContent,
-                    imageLocalIdentifiers: imageIdentifiers,
-                    latitude: coordinate.latitude,
-                    longitude: coordinate.longitude
-                )
+                    let record = PostRecord(
+                        content: textContent,
+                        imageLocalIdentifiers: imageIdentifiers,
+                        latitude: coordinate.latitude,
+                        longitude: coordinate.longitude
+                    )
 
-                postStorage.savePost(record)
-
-                await MainActor.run {
+                    postStorage.savePost(record)
                     isSaving = false
                     dismiss()
                 }
@@ -223,11 +268,7 @@ struct AddPostView: View {
     private func saveImagesToPhotoLibrary(_ images: [UIImage]) async throws -> [String] {
         guard !images.isEmpty else { return [] }
 
-        let status = await withCheckedContinuation { (continuation: CheckedContinuation<PHAuthorizationStatus, Never>) in
-            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-                continuation.resume(returning: status)
-            }
-        }
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
 
         guard status == .authorized || status == .limited else {
             throw NSError(
@@ -242,10 +283,16 @@ struct AddPostView: View {
         for image in images {
             let id = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
                 var placeholder: PHObjectPlaceholder?
+                var hasResumed = false
+                let lock = NSLock()
                 PHPhotoLibrary.shared().performChanges {
                     let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
                     placeholder = request.placeholderForCreatedAsset
                 } completionHandler: { success, error in
+                    lock.lock()
+                    defer { lock.unlock() }
+                    guard !hasResumed else { return }
+                    hasResumed = true
                     if success, let localId = placeholder?.localIdentifier {
                         continuation.resume(returning: localId)
                     } else if let error = error {
@@ -265,36 +312,94 @@ struct AddPostView: View {
         return resultIdentifiers
     }
 
-    /// 逆地理编码：将坐标转换为实际地址（使用 MapKit MKReverseGeocodingRequest）
+    /// 逆地理编码：将坐标转换为实际地址（使用 CoreLocation CLGeocoder）
     private func reverseGeocode(_ coordinate: CLLocationCoordinate2D) {
         isGeocoding = true
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let fallback = String(format: "%.6f°, %.6f°", coordinate.latitude, coordinate.longitude)
 
         Task {
             do {
-                guard let request = MKReverseGeocodingRequest(location: location) else {
-                    await MainActor.run {
-                        isGeocoding = false
-                        addressString = String(format: "%.6f°, %.6f°", coordinate.latitude, coordinate.longitude)
-                    }
-                    return
-                }
-                let mapItems = try await request.mapItems
+                let placemarks = try await CLGeocoder().reverseGeocodeLocation(location)
                 await MainActor.run {
                     isGeocoding = false
-                    if let mapItem = mapItems.first,
-                       let addr = mapItem.addressRepresentations?.fullAddress(includingRegion: true, singleLine: true) {
-                        addressString = addr
+                    if let place = placemarks.first {
+                        addressString = formatAddress(from: place) ?? fallback
                     } else {
-                        addressString = String(format: "%.6f°, %.6f°", coordinate.latitude, coordinate.longitude)
+                        addressString = fallback
                     }
                 }
             } catch {
                 await MainActor.run {
                     isGeocoding = false
-                    addressString = String(format: "%.6f°, %.6f°", coordinate.latitude, coordinate.longitude)
+                    addressString = fallback
                 }
             }
+        }
+    }
+
+    /// 从 CLPlacemark 拼出可读地址
+    private func formatAddress(from place: CLPlacemark) -> String? {
+        var parts: [String] = []
+        if let name = place.name, !name.isEmpty { parts.append(name) }
+        if let thoroughfare = place.thoroughfare, !thoroughfare.isEmpty { parts.append(thoroughfare) }
+        if let locality = place.locality, !locality.isEmpty { parts.append(locality) }
+        if let administrativeArea = place.administrativeArea, !administrativeArea.isEmpty { parts.append(administrativeArea) }
+        if let country = place.country, !country.isEmpty { parts.append(country) }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+}
+
+// MARK: - 图片预览（居中显示，左右滑动切换）
+
+private struct ImagePreviewView: View {
+    let images: [UIImage]
+    let initialIndex: Int
+    let onDismiss: () -> Void
+
+    @State private var currentIndex: Int
+
+    init(images: [UIImage], initialIndex: Int, onDismiss: @escaping () -> Void) {
+        self.images = images
+        self.initialIndex = min(initialIndex, max(0, images.count - 1))
+        self.onDismiss = onDismiss
+        _currentIndex = State(initialValue: min(initialIndex, max(0, images.count - 1)))
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            TabView(selection: $currentIndex) {
+                ForEach(Array(images.enumerated()), id: \.offset) { index, image in
+                    GeometryReader { geo in
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+            .indexViewStyle(.page(backgroundDisplayMode: .always))
+            .onAppear {
+                currentIndex = initialIndex
+            }
+
+            Button {
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
+                    .foregroundStyle(.white)
+                    .shadow(radius: 2)
+            }
+            .padding()
+        }
+        .onTapGesture {
+            onDismiss()
         }
     }
 }

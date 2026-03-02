@@ -12,8 +12,15 @@ import Combine
 final class PostStorageService: ObservableObject {
     private let postsKey = "world_saved_posts"
 
-    /// 加载所有已保存的帖子
-    func loadPosts() -> [PostRecord] {
+    /// 已保存的帖子列表，供地图等界面展示
+    @Published private(set) var posts: [PostRecord] = []
+
+    init() {
+        posts = loadPostsFromStorage()
+    }
+
+    /// 加载所有已保存的帖子（从存储读取）
+    private func loadPostsFromStorage() -> [PostRecord] {
         guard let data = UserDefaults.standard.data(forKey: postsKey) else {
             return []
         }
@@ -22,9 +29,10 @@ final class PostStorageService: ObservableObject {
 
     /// 保存新帖子
     func savePost(_ post: PostRecord) {
-        var posts = loadPosts()
-        posts.insert(post, at: 0)
-        savePosts(posts)
+        var list = loadPostsFromStorage()
+        list.insert(post, at: 0)
+        savePosts(list)
+        posts = list
     }
 
     private func savePosts(_ posts: [PostRecord]) {

@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct worldApp: App {
+    @StateObject private var postStorage = PostStorageService()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(postStorage)
         }
     }
 }
